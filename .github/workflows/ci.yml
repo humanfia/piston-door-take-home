@@ -1,0 +1,41 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  simulator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: The frozen copy matches redsim/
+        run: python tools/freeze.py --check
+      - name: The simulator reproduces the real game's verdicts
+        run: python -m unittest tests.test_simulator -v
+      - name: The starting door works
+        run: python -m unittest tests.submission_tests.Correctness -v
+
+  real-game:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/piston-door-take-home
+          key: minecraft-26.3-${{ runner.os }}-${{ hashFiles('minecraft/bridge/**', 'minecraft/setup.py') }}
+      - name: Install Java, the Minecraft server and the bridge
+        run: python -m minecraft.setup
+      - name: The starting door works in the real game
+        run: python -m redsim door.txt --real --quick
+      - name: Record doors, simulator against the real game, tick by tick
+        run: python tools/both.py corpus/doors/sf-holdA-b38-38b.txt corpus/doors/fc2-40b.txt corpus/doors/e78k-h4-42b.txt corpus/doors/e78k-h5-41b.txt corpus/doors/piston-door-3x3-v2-151b.txt --require-same
+      - name: Random contraptions, simulator against the real game, tick by tick
+        run: |
+          python tools/fuzz.py --seeds 0 300 --profile dense --require-same
+          python tools/fuzz.py --seeds 0 300 --profile logic --wild --require-same
